@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EMAIL-OSINT | فاحص الأصول الرقمية</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="logo">🛡️</div>
+        <h1>EMAIL-OSINT</h1>
+        <p class="subtitle">أداة استخبارات المصادر المفتوحة</p>
+
+        <!-- أزرار التبديل -->
+        <div class="toggle-group">
+            <button class="toggle-btn active" onclick="switchTab('email')">📧 بريد إلكتروني</button>
+            <button class="toggle-btn" onclick="switchTab('phone')">📱 رقم هاتف</button>
+        </div>
+
+        <!-- واجهة البريد الإلكتروني -->
+        <div id="emailTab" class="tab-content active">
+            <div class="form-card">
+                <input type="email" id="emailInput" placeholder="example@domain.com" dir="ltr">
+                <button class="btn-run" onclick="runOSINT('email')">⚡ بدء تحليل البريد</button>
+            </div>
+        </div>
+
+        <!-- واجهة رقم الهاتف -->
+        <div id="phoneTab" class="tab-content">
+            <div class="form-card">
+                <input type="tel" id="phoneInput" placeholder="+201234567890" dir="ltr">
+                <button class="btn-run" onclick="runOSINT('phone')">⚡ بدء تحليل الرقم</button>
+            </div>
+        </div>
+
+        <p class="footer-note">⚠️ للأغراض التعليمية والأخلاقية فقط – البيانات لا تُخزّن ولا تُشارك</p>
+    </div>
+
+    <script>
+        // رابط سير العمل في مستودعك
+        const ACTION_URL = 'https://github.com/YOUR_USERNAME/EMAIL-OSINT/actions/workflows/osint_check.yml';
+
+        // تبديل التبويبات
+        function switchTab(tab) {
+            document.querySelectorAll('.toggle-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+
+            if (tab === 'email') {
+                document.querySelector('.toggle-btn:nth-child(1)').classList.add('active');
+                document.getElementById('emailTab').classList.add('active');
+            } else {
+                document.querySelector('.toggle-btn:nth-child(2)').classList.add('active');
+                document.getElementById('phoneTab').classList.add('active');
+            }
+        }
+
+        // تشغيل التحليل
+        function runOSINT(type) {
+            let data = '';
+            if (type === 'email') {
+                data = document.getElementById('emailInput').value.trim();
+                if (!data) return alert('من فضلك أدخل البريد الإلكتروني');
+            } else {
+                data = document.getElementById('phoneInput').value.trim();
+                if (!data) return alert('من فضلك أدخل رقم الهاتف بصيغة دولية');
+            }
+
+            // يفتح GitHub Actions في تبويب جديد
+            window.open(ACTION_URL, '_blank');
+
+            // إرشاد المستخدم
+            const field = type === 'email' ? 'email' : 'phone';
+            alert(`✅ تم نسخ: ${data}\n\n📋 الصق هذه القيمة في خانة ${field} ثم اضغط Run workflow`);
+        }
+    </script>
+</body>
+</html>
