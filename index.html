@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EMAIL-OSINT | فاحص الأصول الرقمية</title>
+    <!-- مكتبة تحليل أرقام الهاتف -->
+    <script src="https://cdn.jsdelivr.net/npm/libphonenumber-js@1.11.1/bundle/libphonenumber-min.js"></script>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -22,30 +24,169 @@
         <div id="emailTab" class="tab-content active">
             <div class="form-card">
                 <input type="email" id="emailInput" placeholder="example@domain.com" dir="ltr">
-                <button class="btn-run" onclick="runOSINT('email')">⚡ بدء تحليل البريد</button>
+                <button class="btn-run" onclick="analyzeEmail()">⚡ تحليل البريد</button>
             </div>
+            <div id="emailResult" class="result-box"></div>
         </div>
 
         <!-- واجهة رقم الهاتف -->
         <div id="phoneTab" class="tab-content">
             <div class="form-card">
                 <input type="tel" id="phoneInput" placeholder="+201234567890" dir="ltr">
-                <button class="btn-run" onclick="runOSINT('phone')">⚡ بدء تحليل الرقم</button>
+                <button class="btn-run" onclick="analyzePhone()">⚡ تحليل الرقم</button>
             </div>
+            <div id="phoneResult" class="result-box"></div>
         </div>
 
         <p class="footer-note">⚠️ للأغراض التعليمية والأخلاقية فقط – البيانات لا تُخزّن ولا تُشارك</p>
     </div>
 
     <script>
-        // رابط سير العمل في مستودعك
-        const ACTION_URL = 'https://github.com/YOUR_USERNAME/EMAIL-OSINT/actions/workflows/osint_check.yml';
+        // ========== دوال البريد الإلكتروني ==========
+        async function sha1(message) {
+            const msgBuffer = new TextEncoder().encode(message);
+            const hashBuffer = await crypto.subtle.digest('SHA-1', msgBuffer);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        }
 
-        // تبديل التبويبات
+        async function checkBreach(email) {
+            const hash = await sha1(email);
+            const prefix = hash.substring(0, 5);
+            const suffix = hash.substring(5);
+            const url = `https://api.pwnedpasswords.com/range/${prefix}`;
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('فشل الاتصال');
+                const text = await response.text();
+                const lines = text.split('\n');
+                for (let line of lines) {
+                    let [hashSuffix, count] = line.split(':');
+                    if (hashSuffix.trim().toLowerCase() === suffix) {
+                        return parseInt(count);
+                    }
+                }
+                return 0;
+            } catch (err) {
+                return null;
+            }
+        }
+
+        async function getMxRecords(domain) {
+            const url = `https://dns.google/resolve?name=${domain}&type=MX`;
+            try {
+                const resp = await fetch(url);
+                const data = await resp.json();
+                if (data.Answer) {
+                    const exchanges = data.Answer.map(a => a.data.split(' ')[1]);
+                    return exchanges;
+                }
+                return [];
+            } catch (e) {
+                return [];
+            }
+        }
+
+        async function getIpFromHost(host) {
+            const url = `https://dns.google/resolve?name=${host}&type=A`;
+            const resp = await fetch(url);
+            const data = await resp.json();
+            if (data.Answer) {
+                return data.Answer[0].data;
+            }
+            return null;
+        }
+
+        async function geolocate(ip) {
+            try {
+                const resp = await fetch(`http://ip-api.com/json/${ip}`);
+                const data = await resp.json();
+                if (data.status === 'success') {
+                    return `${data.city}, ${data.regionName}, ${data.country} – ${data.isp}`;
+                }
+                return 'غير معروف';
+            } catch (e) {
+                return 'تعذر التحديد';
+            }
+        }
+
+        async function analyzeEmail() {
+            const email = document.getElementById('emailInput').value.trim();
+            const resultDiv = document.getElementById('emailResult');
+            if (!email || !email.includes('@')) {
+                resultDiv.innerHTML = '<div class="error">يرجى إدخال بريد صحيح</div>';
+                return;
+            }
+
+            resultDiv.innerHTML = '<div class="loading">🔄 جاري التحليل...</div>';
+
+            let output = '<div class="result-card">';
+            output += `<h3>📧 ${email}</h3>`;
+
+            // فحص التسريبات
+            const breachCount = await checkBreach(email);
+            if (breachCount === null) {
+                output += '<p>⚠️ تعذر فحص التسريبات</p>';
+            } else if (breachCount > 0) {
+                output += `<p class="warning">🚨 ظهر في ${breachCount} تسريب بيانات!</p>`;
+            } else {
+                output += '<p class="good">✅ لم يظهر في أي تسريب معروف</p>';
+            }
+
+            // خادم البريد
+            const domain = email.split('@')[1];
+            const mxRecords = await getMxRecords(domain);
+            if (mxRecords.length > 0) {
+                const mainMx = mxRecords[0];
+                output += `<p>📬 خادم البريد الأساسي: ${mainMx}</p>`;
+                const ip = await getIpFromHost(mainMx);
+                if (ip) {
+                    const location = await geolocate(ip);
+                    output += `<p>🌍 الموقع التقريبي: ${location}</p>`;
+                } else {
+                    output += '<p>🌍 تعذر تحديد الموقع</p>';
+                }
+            } else {
+                output += '<p>📬 لا يوجد سجل MX للنطاق</p>';
+            }
+
+            output += '</div>';
+            resultDiv.innerHTML = output;
+        }
+
+        // ========== دوال الهاتف ==========
+        function analyzePhone() {
+            const phone = document.getElementById('phoneInput').value.trim();
+            const resultDiv = document.getElementById('phoneResult');
+            if (!phone) {
+                resultDiv.innerHTML = '<div class="error">يرجى إدخال رقم هاتف</div>';
+                return;
+            }
+
+            try {
+                const parsed = libphonenumber.parsePhoneNumber(phone);
+                if (!parsed.isValid()) {
+                    resultDiv.innerHTML = '<div class="error">رقم غير صالح</div>';
+                    return;
+                }
+
+                let output = '<div class="result-card">';
+                output += `<h3>📱 ${parsed.formatInternational()}</h3>`;
+                output += `<p>🌐 الدولة: ${parsed.country || 'غير معروف'}</p>`;
+                output += `<p>🏢 المشغل: ${parsed.carrier || 'غير معروف'}</p>`;
+                output += `<p>🏷️ النوع: ${parsed.getType() || 'غير معروف'}</p>`;
+                output += `<p>✅ صالح: نعم</p>`;
+                output += '</div>';
+                resultDiv.innerHTML = output;
+            } catch (e) {
+                resultDiv.innerHTML = '<div class="error">حدث خطأ في التحليل، تأكد من الصيغة الدولية (+966...)</div>';
+            }
+        }
+
+        // ========== التبويبات ==========
         function switchTab(tab) {
             document.querySelectorAll('.toggle-btn').forEach(btn => btn.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
-
             if (tab === 'email') {
                 document.querySelector('.toggle-btn:nth-child(1)').classList.add('active');
                 document.getElementById('emailTab').classList.add('active');
@@ -53,25 +194,9 @@
                 document.querySelector('.toggle-btn:nth-child(2)').classList.add('active');
                 document.getElementById('phoneTab').classList.add('active');
             }
-        }
-
-        // تشغيل التحليل
-        function runOSINT(type) {
-            let data = '';
-            if (type === 'email') {
-                data = document.getElementById('emailInput').value.trim();
-                if (!data) return alert('من فضلك أدخل البريد الإلكتروني');
-            } else {
-                data = document.getElementById('phoneInput').value.trim();
-                if (!data) return alert('من فضلك أدخل رقم الهاتف بصيغة دولية');
-            }
-
-            // يفتح GitHub Actions في تبويب جديد
-            window.open(ACTION_URL, '_blank');
-
-            // إرشاد المستخدم
-            const field = type === 'email' ? 'email' : 'phone';
-            alert(`✅ تم نسخ: ${data}\n\n📋 الصق هذه القيمة في خانة ${field} ثم اضغط Run workflow`);
+            // مسح النتائج عند التبديل
+            document.getElementById('emailResult').innerHTML = '';
+            document.getElementById('phoneResult').innerHTML = '';
         }
     </script>
 </body>
