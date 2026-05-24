@@ -1,0 +1,39 @@
+name: OSINT Investigation
+
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: 'Email address to investigate'
+        required: false
+      phone:
+        description: 'Phone number in international format (+123...)'
+        required: false
+
+jobs:
+  run-osint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Execute OSINT tool
+        env:
+          EMAIL: ${{ github.event.inputs.email }}
+          PHONE: ${{ github.event.inputs.phone }}
+        run: |
+          if [ -n "$EMAIL" ]; then
+            python osint_tool.py --email "$EMAIL"
+          elif [ -n "$PHONE" ]; then
+            python osint_tool.py --phone "$PHONE"
+          else
+            echo "No input provided. Please supply --email or --phone."
+          fi
